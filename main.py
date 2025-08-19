@@ -1,6 +1,8 @@
 import csv
-from telethon import TelegramClient
+import asyncio
 from environs import Env
+from telethon import TelegramClient
+from telethon.tl.types import ReactionEmoji
 
 env = Env()
 env.read_env()
@@ -11,24 +13,78 @@ phone = env('PHONE')
 password = env('PASSWORD', None)
 channel_link = env('CHANNEL_LINK')
 
-output_file = "channel_messages.csv"
+output_file_posts = "channel_posts.csv"
+output_file_comments = "channel_comments.csv"
 session_name = "parser"
 
-client = TelegramClient(session_name, api_id, api_hash)
+client = TelegramClient(session=session_name, api_id=api_id, api_hash=api_hash,
+                        device_model="Samsung Galaxy S24 Ultra", system_version="Android 16", app_version="11.14.1")  # можно поменять в соответствии с выбранной платформой приложения
 
 
 async def main():
-    with open(output_file, "w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow(["date", "text"])
+    channel = await client.get_entity(channel_link)
 
-        async for message in client.iter_messages(channel_link, reverse=True):
+    with (open(output_file_posts, "w", newline="", encoding="utf-8") as file_posts,
+          open(output_file_comments, "w", newline="", encoding="utf-8") as file_comments):
+
+        writer_posts = csv.writer(file_posts)
+        writer_comments = csv.writer(file_comments)
+
+        writer_posts.writerow(["post_id", "date", "text", "reactions", "comments_count"])
+        writer_comments.writerow(["post_id", "comment_id", "date", "author_id", "author_username", "text"])
+
+        async for message in client.iter_messages(channel, reverse=True):
             if message.text:
-                writer.writerow([message.date.isoformat(), message.text])
+                post_id = message.id
+                date = message.date.isoformat()
+                text = message.text
 
-    print(f"Все сообщения сохранены в {output_file}")
+                reactions_data = None
+                if message.reactions:
+                    parts = []
+                    for reaction in message.reactions.results:
+                        emoji = reaction.reaction.emoticon if isinstance(reaction.reaction, ReactionEmoji) else str(reaction.reaction)
+                        parts.append(f"{emoji}:{reaction.count}")
+                    reactions_data = "; ".join(parts)
+
+                comments_count = message.replies.replies if message.replies else 0
+
+                writer_posts.writerow([post_id, date, text, reactions_data, comments_count])
+
+                if comments_count > 0:
+                    async for comment in client.iter_messages(channel, reply_to=post_id, reverse=True):
+
+                        if comment.text:
+                            if comment.sender:
+                                user_id = comment.sender_id
+
+                                if comment.sender.username:
+                                    username = f"@{comment.sender.username}"
+                                else:
+                                    first_name = comment.sender.first_name or ""
+                                    last_name = comment.sender.last_name or ""
+                                    username = (first_name + " " + last_name).strip() or None
+                            else:
+                                user_id = channel.id
+                                username = channel.title or None
+
+                            writer_comments.writerow([
+                                post_id,
+                                comment.id,
+                                comment.date.isoformat(),
+                                user_id,
+                                username,
+                                comment.text
+                            ])
+
+                        await asyncio.sleep(0.5)  #
+                                                  # для избежания FloodWaitError
+                await asyncio.sleep(1)            #
+
+    print(f"Посты сохранены в {output_file_posts}")
+    print(f"Комментарии сохранены в {output_file_comments}")
 
 
 if __name__ == "__main__":
-    with client.start(phone, password):
+    with client.start(phone=phone, password=password):
         client.loop.run_until_complete(main())
