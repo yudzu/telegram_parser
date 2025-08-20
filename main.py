@@ -3,6 +3,7 @@ import asyncio
 from environs import Env
 from telethon import TelegramClient
 from telethon.tl.types import ReactionEmoji
+from telethon import utils
 
 env = Env()
 env.read_env()
@@ -56,24 +57,27 @@ async def main():
 
                         if comment.text:
                             if comment.sender:
-                                user_id = comment.sender_id
+                                if comment.sender_id < 0:
+                                    author_id, peer_type = utils.resolve_id(comment.sender_id)
+                                else:
+                                    author_id = comment.sender_id
 
                                 if comment.sender.username:
-                                    username = f"@{comment.sender.username}"
+                                    author_username = f"@{comment.sender.username}"
                                 else:
                                     first_name = comment.sender.first_name or ""
                                     last_name = comment.sender.last_name or ""
-                                    username = (first_name + " " + last_name).strip() or None
+                                    author_username = (first_name + " " + last_name).strip()
                             else:
-                                user_id = channel.id
-                                username = channel.title or None
+                                author_id = channel.id
+                                author_username = f"@{channel.username}" if channel.username else channel.title
 
                             writer_comments.writerow([
                                 post_id,
                                 comment.id,
                                 comment.date.isoformat(),
-                                user_id,
-                                username,
+                                author_id,
+                                author_username,
                                 comment.text
                             ])
 
