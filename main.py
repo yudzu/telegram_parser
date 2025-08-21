@@ -81,9 +81,9 @@ async def main():
                                 comment.text
                             ])
 
-                        await asyncio.sleep(0.5)  #
+                        await asyncio.sleep(0.1)  #
                                                   # для избежания FloodWaitError
-                await asyncio.sleep(1)            #
+                await asyncio.sleep(0.3)          #
 
     print(f"Посты сохранены в {output_file_posts}")
     print(f"Комментарии сохранены в {output_file_comments}")
